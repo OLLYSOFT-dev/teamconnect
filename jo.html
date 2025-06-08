@@ -1,0 +1,232 @@
+<!DOCTYPE html><html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Team Connect - 50 Levels</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    body {
+      font-family: 'Poppins', sans-serif;
+      background: linear-gradient(135deg, #6366f1, #8b5cf6);
+      min-height: 100vh;
+      padding: 2rem;
+    }
+    .card {
+      perspective: 1000px;
+    }
+    .card-inner {
+      position: relative;
+      transform-style: preserve-3d;
+      transition: transform 0.6s;
+      height: 100%;
+      width: 100%;
+    }
+    .card.flipped .card-inner {
+      transform: rotateY(180deg);
+    }
+    .card-front, .card-back {
+      position: absolute;
+      width: 100%;
+      height: 100%;
+      backface-visibility: hidden;
+      border-radius: 0.75rem;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 2rem;
+    }
+    .card-front {
+      background: #4f46e5;
+      color: white;
+    }
+    .card-back {
+      background: white;
+      transform: rotateY(180deg);
+      font-size: 3rem;
+    }
+  </style>
+</head>
+<body class="text-white"><div class="mb-6 flex flex-col md:flex-row justify-between items-center gap-4">
+  <div>Level: <span id="level">1</span></div>
+  <div>Matches: <span id="matches">0</span>/<span id="total-pairs">0</span></div>
+  <div>Moves: <span id="moves">0</span>/<span id="max-trials">0</span></div>
+  <div>Score: <span id="score">0</span></div>
+  <button id="reset-button" class="bg-white text-indigo-600 font-bold px-4 py-2 rounded shadow">Reset</button>
+</div><div id="game-board" class="grid grid-cols-3 md:grid-cols-4 gap-4 mb-6"></div><div id="question-modal" class="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center hidden">
+  <div class="bg-white p-6 rounded text-black text-center max-w-md w-full">
+    <div class="text-4xl mb-2" id="modal-emoji">🎉</div>
+    <h2 class="font-bold text-xl mb-2">Great match!</h2>
+    <p class="mb-2 font-medium">Question:</p>
+    <p id="question-text" class="mb-4 bg-indigo-100 p-2 rounded"></p>
+    <button id="continue-button" class="bg-indigo-600 text-white px-4 py-2 rounded">Continue</button>
+  </div>
+</div><div id="game-over-modal" class="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center hidden">
+  <div class="bg-white p-6 rounded text-black text-center max-w-md w-full">
+    <h2 class="text-2xl font-bold mb-4">Game Over</h2>
+    <p id="game-over-message" class="mb-4"></p>
+    <button id="restart-button" class="bg-indigo-600 text-white px-4 py-2 rounded">Restart</button>
+  </div>
+</div><script>
+document.addEventListener('DOMContentLoaded', () => {
+  const levels = Array.from({ length: 50 }, (_, i) => {
+    const level = i + 1;
+    const pairs = level <= 10 ? 6 : level <= 20 ? 8 : level <= 30 ? 10 : level <= 40 ? 12 : 14;
+    const maxTrials = 3 * level + 5; // Increasing moves per level (+3 base)
+    const pointsPerMatch = level <= 10 ? 10 : level <= 20 ? 12 : level <= 30 ? 14 : level <= 40 ? 16 : 18;
+    return { level, pairs, maxTrials, pointsPerMatch };
+  });
+
+  const questions = [
+    "What emoji best describes your mood today?",
+    "Share a recent win at work.",
+    "If you could learn a new skill instantly, what would it be?",
+    "What’s your favorite way to relax?",
+    "Name a teammate you appreciate and why.",
+    "What’s a goal you're working on this week?"
+  ];
+
+  const emojis = ['🚀','🌟','🎯','💡','🧩','📚','🎉','🎵','⚽','🍕','🐱','🌈','🔥','🌍','💻','🎮','📷','📈','🎬','🖌️'];
+
+  const gameBoard = document.getElementById('game-board');
+  const levelDisplay = document.getElementById('level');
+  const matchesDisplay = document.getElementById('matches');
+  const totalPairsDisplay = document.getElementById('total-pairs');
+  const movesDisplay = document.getElementById('moves');
+  const maxTrialsDisplay = document.getElementById('max-trials');
+  const scoreDisplay = document.getElementById('score');
+  const questionModal = document.getElementById('question-modal');
+  const modalEmoji = document.getElementById('modal-emoji');
+  const questionText = document.getElementById('question-text');
+  const continueButton = document.getElementById('continue-button');
+  const gameOverModal = document.getElementById('game-over-modal');
+  const gameOverMessage = document.getElementById('game-over-message');
+  const restartButton = document.getElementById('restart-button');
+  const resetButton = document.getElementById('reset-button');
+
+  let currentLevel = 0;
+  let moves = 0, matches = 0, score = 0;
+  let flippedCards = [], canFlip = true;
+
+  function shuffle(array) {
+    for (let i = array.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [array[i], array[j]] = [array[j], array[i]];
+    }
+  }
+
+  function startLevel() {
+    const level = levels[currentLevel];
+    const selectedEmojis = emojis.slice(0, level.pairs);
+    const allCards = [...selectedEmojis, ...selectedEmojis];
+    shuffle(allCards);
+
+    moves = 0;
+    matches = 0;
+    flippedCards = [];
+    canFlip = false;
+
+    levelDisplay.textContent = level.level;
+    totalPairsDisplay.textContent = level.pairs;
+    matchesDisplay.textContent = matches;
+    movesDisplay.textContent = moves;
+    maxTrialsDisplay.textContent = level.maxTrials;
+    scoreDisplay.textContent = score;
+
+    gameBoard.innerHTML = '';
+    const cardElements = [];
+    allCards.forEach((emoji, idx) => {
+      const card = document.createElement('div');
+      card.className = 'card aspect-square flipped';
+      card.dataset.emoji = emoji;
+      card.innerHTML = `
+        <div class="card-inner">
+          <div class="card-front">❓</div>
+          <div class="card-back">${emoji}</div>
+        </div>`;
+      gameBoard.appendChild(card);
+      cardElements.push(card);
+    });
+
+    // Show all cards for 3 seconds, then flip back
+    setTimeout(() => {
+      cardElements.forEach(card => card.classList.remove('flipped'));
+      canFlip = true;
+    }, 3000);
+  }
+
+  function handleFlip(card) {
+    if (!canFlip || flippedCards.includes(card) || card.classList.contains('flipped')) return;
+
+    card.classList.add('flipped');
+    flippedCards.push(card);
+
+    if (flippedCards.length === 2) {
+      moves++;
+      movesDisplay.textContent = moves;
+
+      const [c1, c2] = flippedCards;
+      if (c1.dataset.emoji === c2.dataset.emoji) {
+        matches++;
+        matchesDisplay.textContent = matches;
+        score += levels[currentLevel].pointsPerMatch;
+        scoreDisplay.textContent = score;
+        showQuestion(c1.dataset.emoji);
+        flippedCards = [];
+
+        if (matches === levels[currentLevel].pairs) {
+          currentLevel++;
+          if (currentLevel < levels.length) {
+            setTimeout(startLevel, 1000);
+          } else {
+            endGame("You completed all 50 levels! 🎉");
+          }
+        }
+      } else {
+        canFlip = false;
+        setTimeout(() => {
+          c1.classList.remove('flipped');
+          c2.classList.remove('flipped');
+          flippedCards = [];
+          canFlip = true;
+        }, 1000);
+      }
+
+      if (moves >= levels[currentLevel].maxTrials && matches < levels[currentLevel].pairs) {
+        endGame("You ran out of moves. Try again!");
+      }
+    }
+  }
+
+  function endGame(message) {
+    gameOverMessage.textContent = message;
+    gameOverModal.classList.remove('hidden');
+  }
+
+  function showQuestion(emoji) {
+    modalEmoji.textContent = emoji;
+    questionText.textContent = questions[Math.floor(Math.random() * questions.length)];
+    questionModal.classList.remove('hidden');
+  }
+
+  continueButton.addEventListener('click', () => questionModal.classList.add('hidden'));
+  restartButton.addEventListener('click', () => {
+    gameOverModal.classList.add('hidden');
+    currentLevel = 0;
+    score = 0;
+    startLevel();
+  });
+  resetButton.addEventListener('click', () => {
+    currentLevel = 0;
+    score = 0;
+    startLevel();
+  });
+
+  gameBoard.addEventListener('click', e => {
+    const card = e.target.closest('.card');
+    if (card) handleFlip(card);
+  });
+
+  startLevel();
+});
+</script></body>
+</html>
